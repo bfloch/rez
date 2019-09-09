@@ -2,9 +2,9 @@ import os
 
 
 cmake = {
-    # The name of the CMake build system to use, valid options are
-    # eclipse, make, xcode and codeblocks.
-    "build_system": "make",
+    # The name of the CMake build system to use, valid options depend on the
+    # platform and cmake version. None uses default generator.
+    "build_system": None,
 
     # The name of the CMake build target to use, valid options are Debug,
     # Release and RelWithDebInfo.
@@ -22,15 +22,12 @@ cmake = {
     "cmake_binary": None,
 
     # Optionally specify an explicit make executable to use for building. If
-    # not specified, this is determined automatically based on `build_system`.
+    # not specified, it build via `cmake --build .`
     "make_binary": None,
 
     # If True, install pyc files when the 'rez_install_python' macro is used.
     "install_pyc": True,
 }
-
-if os.name != "posix":
-    cmake["build_system"] = "nmake"
 
 
 # Copyright 2013-2016 Allan Johns.

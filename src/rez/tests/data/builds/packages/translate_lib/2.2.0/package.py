@@ -7,14 +7,17 @@ authors = ["axl.rose"]
 description = "A simple C++ library with minimal dependencies."
 
 def commands():
-    import platform
 
     env.CMAKE_MODULE_PATH.append("{root}/cmake")
 
-    if platform.system() == "Darwin":
+    if system.platform == "osx":
         env.DYLD_LIBRARY_PATH.append("{root}/lib")
-    else:
+    elif system.platform == "linux":
         env.LD_LIBRARY_PATH.append("{root}/lib")
+    elif system.platform == "windows":
+        env.PATH.append("{root}\\lib")
+    else:
+        error("Unsupported platform '{}'".format(system.platform))
 
 uuid = "38eda6e8-f162-11e0-9de0-0023ae79d988"
 

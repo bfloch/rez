@@ -628,7 +628,13 @@ class Python(ActionInterpreter):
         if self.manager:
             self.target_environ.update(self.manager.environ)
 
-        shell_mode = not hasattr(args, '__iter__')
+        # Windows does not respect PATH for executable discovery if shell=False.
+        # It's unlikely this is wanted, but we allow overriding it.
+        shell_mode = subproc_kwargs.get(
+            "shell",
+            not hasattr(args, '__iter__') or system.platform == "windows"
+        )
+
         return popen(args,
                      shell=shell_mode,
                      env=self.target_environ,

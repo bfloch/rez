@@ -296,6 +296,16 @@ class CMD(Shell):
         pass
 
     def setenv(self, key, value):
+        # HACK: This makes expansion possible since CMAKE will only receive a
+        # single \ and interpret is as escape code. A more generic solution
+        # would be to format the environment explicitly in the package.py
+        if key == "CMAKE_MODULE_PATH":
+            if isinstance(value, EscapedString):
+                for i in range(len(value.strings)):
+                    value.strings[i] = (value.strings[i][0], value.strings[i][1].replace("\\", "/"),)
+            else:
+                value = value.replace("\\", "/")
+
         value = self.escape_string(value)
         self._addline('set %s=%s' % (key, value))
 

@@ -10,6 +10,7 @@ from rez.exceptions import BuildSystemError
 from rez.util import create_forwarding_script
 from rez.packages_ import get_developer_package
 from rez.utils.platform_ import platform_
+from rez.utils.system import popen
 from rez.config import config
 from rez.backport.shutilwhich import which
 from rez.vendor.schema.schema import Or
@@ -19,6 +20,7 @@ import functools
 import os.path
 import sys
 import os
+from subprocess import PIPE
 
 
 basestring = six.string_types[0]
@@ -26,7 +28,6 @@ basestring = six.string_types[0]
 
 class RezCMakeError(BuildSystemError):
     pass
-
 
 class CMakeBuildSystem(BuildSystem):
     """The CMake build system.
@@ -43,20 +44,83 @@ class CMakeBuildSystem(BuildSystem):
       if 0, just a build is occurring.
     """
 
-    build_systems = {
-        'eclipse': "Eclipse CDT4 - Unix Makefiles",
-        'codeblocks': "CodeBlocks - Unix Makefiles",
-        'make': "Unix Makefiles",
-        'nmake': "NMake Makefiles",
-        'mingw': "MinGW Makefiles",
-        'xcode': "Xcode"
-    }
+    # Populated by build_systems()
+    _default_build_system = None
+
+    @classmethod
+    def default_build_system(cls):
+        # Will only evaluate once
+        cls.build_systems()
+        return cls._default_build_system
+
+
+    _build_systems = None
+
+    @classmethod
+    def build_systems(cls):
+        if cls._build_systems is not None:
+            return cls._build_systems
+
+        settings = config.plugins.build_system.cmake
+        found_exe = cls._find_cmake()
+
+        cmd = [found_exe, '--help']
+
+        stdout = ""
+        p = popen(cmd, universal_newlines=True, stdout=PIPE, stderr=PIPE)
+        stdout, _ = p.communicate()
+
+        is_in_generators = False
+        generators = []
+        for line in stdout.split("\n"):
+            if is_in_generators:
+                if "=" in line:
+                    name, _ = line.split("=")
+
+                    # Some targets may have option [arch].
+                    # Not parsing this information as newer generators
+                    # (Visual Studio 2019) use the -A option instead.
+                    name = name.replace("[arch]", "")
+
+                    # New cmake version highlight default with *
+                    is_default = False
+                    if name.startswith("* "):
+                        is_default = True
+                        name = name[2:]
+
+                    name = name.strip(" ")
+
+                    if is_default:
+                        cls._default_build_system = name
+
+                    generators.append(name)
+            elif line.startswith("Generators"):
+                is_in_generators = True
+
+        # TODO: Clean up after legacy has been deprecated
+        # In order to be compatible with the legacy_build_systems the keys
+        # and values are mirrored
+
+        cls._build_systems = dict(zip(generators, generators))
+
+        return cls._build_systems
+
+    # DEPRECATED: Maintenance burdon, since the generators depend on platorm,
+    # and cmake version.
+    legacy_build_systems = {
+            'eclipse': "Eclipse CDT4 - Unix Makefiles",
+            'codeblocks': "CodeBlocks - Unix Makefiles",
+            'make': "Unix Makefiles",
+            'nmake': "NMake Makefiles",
+            'mingw': "MinGW Makefiles",
+            'xcode': "Xcode"
+        }
 
     build_targets = ["Debug", "Release", "RelWithDebInfo"]
 
     schema_dict = {
         "build_target": Or(*build_targets),
-        "build_system": Or(*build_systems.keys()),
+        "build_system": Or(None, basestring),
         "cmake_args": [basestring],
         "cmake_binary": Or(None, basestring),
         "make_binary": Or(None, basestring)
@@ -83,7 +147,7 @@ class CMakeBuildSystem(BuildSystem):
                            help="set the build target (default: %(default)s).")
         group.add_argument("--bs", "--cmake-build-system",
                            dest="cmake_build_system",
-                           choices=cls.build_systems.keys(),
+                           choices=cls.build_systems().keys(),
                            default=settings.build_system,
                            help="set the cmake build system (default: %(default)s).")
 
@@ -112,16 +176,7 @@ class CMakeBuildSystem(BuildSystem):
             if self.verbose:
                 print(s)
 
-        # find cmake binary
-        if self.settings.cmake_binary:
-            exe = self.settings.cmake_binary
-        else:
-            exe = context.which("cmake", fallback=True)
-        if not exe:
-            raise RezCMakeError("could not find cmake binary")
-        found_exe = which(exe)
-        if not found_exe:
-            raise RezCMakeError("cmake binary does not exist: %s" % exe)
+        found_exe = self._find_cmake(context)
 
         sh = create_shell()
 
@@ -132,11 +187,21 @@ class CMakeBuildSystem(BuildSystem):
 
         cmd.append("-DCMAKE_INSTALL_PREFIX=%s" % install_path)
         cmd.append("-DCMAKE_MODULE_PATH=%s" %
-                   sh.get_key_token("CMAKE_MODULE_PATH").replace('\\', '/'))
+                   sh.get_key_token("CMAKE_MODULE_PATH").replace('\\', '/')) # Replace won't work here ... needs to expand
         cmd.append("-DCMAKE_BUILD_TYPE=%s" % self.build_target)
         cmd.append("-DREZ_BUILD_TYPE=%s" % build_type.name)
         cmd.append("-DREZ_BUILD_INSTALL=%d" % (1 if install else 0))
-        cmd.extend(["-G", self.build_systems[self.cmake_build_system]])
+        if self.cmake_build_system:
+            generator = None
+            if not self.cmake_build_system in self.build_systems().keys():
+                # TODO: Deprecate
+                generator = self.legacy_build_systems[self.cmake_build_system]
+            else:
+                generator = self.build_systems()[self.cmake_build_system]
+
+            cmd.extend(["-G", generator])
+        elif self.default_build_system():
+            _pr("Using default Generator {}".format(self.default_build_system()))
 
         if config.rez_1_cmake_variables and \
                 not config.disable_rez_1_compatibility and \
@@ -187,30 +252,41 @@ class CMakeBuildSystem(BuildSystem):
         # assemble make command
         make_binary = self.settings.make_binary
 
+        cmd = []
         if not make_binary:
-            if self.cmake_build_system == "mingw":
-                make_binary = "mingw32-make"
-            elif self.cmake_build_system == "nmake":
-                make_binary = "nmake"
-            else:
-                make_binary = "make"
-
-        cmd = [make_binary] + (self.child_build_args or [])
-
-        # nmake has no -j
-        if make_binary != "nmake":
-            if not any(x.startswith("-j") for x in (self.child_build_args or [])):
+            cmd = [found_exe, "--build", build_path]
+            # if self.cmake_build_system == "mingw":
+            #     make_binary = "mingw32-make"
+            # elif self.cmake_build_system == "nmake":
+            #     make_binary = "nmake"
+            # else:
+            #     make_binary = "make"
+        elif make_binary != "nmake":
+            cmd = [make_binary]
+            if not any(x.startswith("-j") for x in
+                       (self.child_build_args or [])):
                 n = variant.config.build_thread_count
                 cmd.append("-j%d" % n)
 
+        cmd += (self.child_build_args or [])
+
+        all_cmd = cmd[:]     # Copy
+        if not make_binary:
+            if platform_.name == "windows":
+                all_cmd += ["--target", "ALL_BUILD"]
+            else:
+                all_cmd += ["--target", "all"]
+
         # execute make within the build env
         _pr("\nExecuting: %s" % ' '.join(cmd))
-        retcode, _, _ = context.execute_shell(command=cmd,
+        retcode, _, _ = context.execute_shell(command=all_cmd,
                                               block=True,
                                               cwd=build_path,
                                               actions_callback=callback)
 
         if not retcode and install and "install" not in cmd:
+            if not make_binary:
+                cmd.append("--target")
             cmd.append("install")
 
             # execute make install within the build env
@@ -222,6 +298,25 @@ class CMakeBuildSystem(BuildSystem):
 
         ret["success"] = (not retcode)
         return ret
+
+    @classmethod
+    def _find_cmake(cls, context=None):
+        settings = config.plugins.build_system.cmake
+        exe = None
+
+        if settings.cmake_binary:
+            exe = settings.cmake_binary
+        elif context:
+            exe = context.which("cmake", fallback=True)
+        else:
+            # No context. Try system path.
+            exe = "cmake"
+        if not exe:
+            raise RezCMakeError("could not find cmake binary")
+        found_exe = which(exe)
+        if not found_exe:
+            raise RezCMakeError("cmake binary does not exist: %s" % exe)
+        return found_exe
 
     @classmethod
     def _add_build_actions(cls, executor, context, package, variant,

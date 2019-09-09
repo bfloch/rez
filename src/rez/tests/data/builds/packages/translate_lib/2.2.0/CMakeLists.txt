@@ -2,6 +2,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 include(RezBuild)
 
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 rez_find_packages(PREFIX pkgs AUTO)
 
 # build/install lib
