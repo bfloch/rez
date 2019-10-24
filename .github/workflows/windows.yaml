@@ -49,4 +49,4 @@ jobs:
 
       - name: Run Rez Tests
         run: |
-          .\build\Scripts\rez\rez-selftest.exe
+          powershell.exe -Command .\build\Scripts\rez\rez-selftest.exe
