@@ -67,8 +67,7 @@ class Popen(_PopenBase):
             kwargs["universal_newlines"] = True
             del kwargs["text"]
 
-        if "shell" not in kwargs or not kwargs["shell"]:
-            kwargs["shell"] = True
+        kwargs["shell"] = True
 
         super(Popen, self).__init__(args, **kwargs)
 

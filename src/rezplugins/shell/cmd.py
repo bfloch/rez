@@ -197,6 +197,9 @@ class CMD(Shell):
         else:
             _record_shell(executor, files=startup_sequence["files"], print_msg=(not quiet))
 
+        # executor.command('echo "<---------------------->"')
+        # executor.command('echo %PATH%')
+
         if shell_command:
             # Launch the provided command in the configured shell and wait
             # until it exits.
@@ -242,6 +245,10 @@ class CMD(Shell):
         cmd += cmd_flags
         cmd += ['call {}'.format(target_file)]
         is_detached = (cmd[0] == 'START')
+
+        # print ("-----------")
+        # print (code)
+        # print ("-----------")
 
         p = Popen(cmd, env=env, shell=is_detached, **Popen_args)
         return p
