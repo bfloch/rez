@@ -12,8 +12,8 @@ jobs:
           - '2019'
         python-version:
           - '2.7'
-          - '3.6'
-          - '3.7'
+#          - '3.6'
+#          - '3.7'
       fail-fast: false
 
     steps:
@@ -48,10 +48,20 @@ jobs:
       - name: Setup python as default application
         run: |
           cmd /c assoc .py=Python.File
-          cmd /c ftype Python.File=python.exe `"%1`" %*
+          cmd /c ftype Python.File=python `"%1`" %*
           echo $ENV:PATHEXT
+          assoc
+          ftype
           $ENV:PATHEXT += ";.PY"
+
+      - name: Test python execution
+        run: |
+          mkdir exec
+          $ENV:PATH += ";$PWD\exec"
+          New-Item "$PWD\exec\hello.py"
+          Set-Content "$PWD\exec\hello.py" 'print("Hello from python")'
+          hello
 
       - name: Run Rez Tests
         run: |
-          powershell.exe -Command .\build\Scripts\rez\rez-selftest.exe
+          .\build\Scripts\rez\rez-selftest.exe
