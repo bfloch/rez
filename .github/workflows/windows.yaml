@@ -40,6 +40,11 @@ jobs:
           mkdir build
           python install.py build
 
+      - name: Verify sanity
+        run: |
+            g++ --help
+            make -h
+
       - name: Setup python as default application
         run: |
           cmd /c assoc .py=Python.File
