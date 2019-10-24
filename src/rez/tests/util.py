@@ -135,7 +135,6 @@ def program_dependent(program_name, *program_names):
     def _test(name):
         command = program_tests[name]
 
-        print(">> Checking: ", name)
         with open(os.devnull, 'wb') as DEVNULL:
             try:
                 subprocess.check_call(command, stdout=DEVNULL, stderr=DEVNULL)
