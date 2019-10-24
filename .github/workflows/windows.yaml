@@ -44,6 +44,8 @@ jobs:
         run: |
           cmd /c assoc .py=Python.File
           cmd /c ftype Python.File=python.exe `"%1`" %*
+          echo $ENV:PATHEXT
+          $ENV:PATHEXT += ";.PY"
 
       - name: Run Rez Tests
         run: |
