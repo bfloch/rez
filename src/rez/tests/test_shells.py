@@ -27,6 +27,7 @@ def _stdout(proc):
     return out_.strip()
 
 
+
 class TestShells(TestBase, TempdirMixin):
     @classmethod
     def setUpClass(cls):
